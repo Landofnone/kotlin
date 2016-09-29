@@ -21,42 +21,46 @@ import com.intellij.psi.PsiWhiteSpace
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.refactoring.move.moveInner.MoveInnerClassUsagesHandler
 import com.intellij.usageView.UsageInfo
-import org.jetbrains.kotlin.idea.references.mainReference
-import org.jetbrains.kotlin.idea.references.matchesTarget
+import org.jetbrains.kotlin.idea.caches.resolve.analyze
+import org.jetbrains.kotlin.idea.core.ShortenReferences
+import org.jetbrains.kotlin.idea.refactoring.changeSignature.usages.explicateReceiverOf
 import org.jetbrains.kotlin.psi.KtCallExpression
 import org.jetbrains.kotlin.psi.KtPsiFactory
-import org.jetbrains.kotlin.psi.KtQualifiedExpression
-import org.jetbrains.kotlin.psi.KtSimpleNameExpression
-import org.jetbrains.kotlin.psi.psiUtil.getQualifiedElementSelector
-import java.util.*
+import org.jetbrains.kotlin.psi.KtValueArgumentList
+import org.jetbrains.kotlin.resolve.calls.callUtil.getResolvedCall
+import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
+import org.jetbrains.kotlin.resolve.scopes.receivers.ExpressionReceiver
+import org.jetbrains.kotlin.resolve.scopes.receivers.ImplicitReceiver
 
 class MoveJavaInnerClassKotlinUsagesHandler: MoveInnerClassUsagesHandler {
     override fun correctInnerClassUsage(usage: UsageInfo, outerClass: PsiClass) {
         val innerCall = usage.element?.parent as? KtCallExpression ?: return
 
-        val receiver = (innerCall.parent as? KtQualifiedExpression)?.receiverExpression ?: return
-        val outerClassRefExpr = when (receiver) {
-            is KtCallExpression -> receiver.calleeExpression
-            is KtQualifiedExpression -> receiver.getQualifiedElementSelector()
-            else -> null
-        } as? KtSimpleNameExpression
-        val outerClassRef = outerClassRefExpr?.mainReference ?: return
-        if (!outerClassRef.matchesTarget(outerClass)) return
+        val resolvedCall = innerCall.getResolvedCall(innerCall.analyze(BodyResolveMode.PARTIAL)) ?: return
+        val receiverValue = resolvedCall.dispatchReceiver ?: return
 
         val psiFactory = KtPsiFactory(usage.project)
 
-        val argumentList = innerCall.valueArgumentList
-        if (argumentList != null) {
-            val newArguments = ArrayList<String>()
-            newArguments.add(receiver.text!!)
-            argumentList.arguments.mapTo(newArguments) { it.text!! }
-            argumentList.replace(psiFactory.createCallArguments(newArguments.joinToString(prefix = "(", postfix = ")")))
-        }
-        else {
-            innerCall.lambdaArguments.firstOrNull()?.let { lambdaArg ->
-                val anchor = PsiTreeUtil.skipSiblingsBackward(lambdaArg, PsiWhiteSpace::class.java)
-                innerCall.addAfter(psiFactory.createCallArguments("(${receiver.text})"), anchor)
-            }
+        val argumentExpressionToAdd = when (receiverValue) {
+            is ExpressionReceiver -> receiverValue.expression
+            is ImplicitReceiver -> psiFactory.createExpression(explicateReceiverOf(receiverValue.declarationDescriptor))
+            else -> null
+        } ?: return
+        val argumentToAdd = psiFactory.createArgument(argumentExpressionToAdd)
+
+        val needToShortenThis = receiverValue is ImplicitReceiver
+
+        val argumentList =
+                innerCall.valueArgumentList
+                ?: (innerCall.lambdaArguments.firstOrNull()?.let { lambdaArg ->
+                    val anchor = PsiTreeUtil.skipSiblingsBackward(lambdaArg, PsiWhiteSpace::class.java)
+                    innerCall.addAfter(psiFactory.createCallArguments("()"), anchor)
+                } as KtValueArgumentList?)
+                ?: return
+
+        val newArgument = argumentList.addArgumentAfter(argumentToAdd, null)
+        if (needToShortenThis) {
+            ShortenReferences { ShortenReferences.Options(removeThisLabels = true) }.process(newArgument)
         }
     }
 }
