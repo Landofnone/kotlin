@@ -28,9 +28,11 @@ internal class IncrementalPackagePartProvider private constructor(
         incrementalCaches: List<IncrementalCache>,
         storageManager: StorageManager
 ) : PackagePartProvider {
-    private val moduleMappings = storageManager.createLazyValue { incrementalCaches.map { cache ->
-        ModuleMapping.create(cache.getModuleMappingData(), "<incremental>")
-    } }
+    private val moduleMappings = storageManager.createLazyValue {
+        incrementalCaches.map { cache ->
+            ModuleMapping.create(cache.getModuleMappingData(), "<incremental>")
+        }
+    }
 
     override fun findPackageParts(packageFqName: String): List<String> {
         return (moduleMappings().mapNotNull { it.findPackageParts(packageFqName) }.flatMap { it.parts } +
