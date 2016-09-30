@@ -9054,6 +9054,12 @@ public class IntentionTestGenerated extends AbstractIntentionTest {
             String fileName = KotlinTestUtils.navigationMetadata("idea/testData/intentions/moveOutOfCompanion/notCompanion2.kt");
             doTest(fileName);
         }
+
+        @TestMetadata("redeclarationConflict.kt")
+        public void testRedeclarationConflict() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/intentions/moveOutOfCompanion/redeclarationConflict.kt");
+            doTest(fileName);
+        }
     }
 
     @TestMetadata("idea/testData/intentions/moveToCompanion")
