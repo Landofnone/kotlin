@@ -20,6 +20,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.search.GlobalSearchScope
 import org.jetbrains.kotlin.load.kotlin.VirtualFileKotlinClassFinder
 import org.jetbrains.kotlin.name.ClassId
+import org.jetbrains.kotlin.utils.addToStdlib.check
 
 class JvmCliVirtualFileFinder(
         private val index: JvmDependenciesIndex,
@@ -31,6 +32,6 @@ class JvmCliVirtualFileFinder(
             dir.findChild("$classFileName.class")?.let {
                 if (it.isValid) it else null
             }
-        }
+        }?.check { it in scope }
     }
 }
